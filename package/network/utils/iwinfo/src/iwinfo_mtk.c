@@ -511,19 +511,23 @@ static void mtk_drv_set(const char *ifname, const char *arg)
 	mtk_ioctl(ifname, RTPRIV_IOCTL_SET, &wrq);
 }
 
-/* Configure PartialScan (2 channels/round, 250ms home gap) and trigger the survey. */
-static void mtk_init_partial_scan(const char *ifname)
+/* Configure PartialScan (2 channels/round, 250ms home gap), shorten active
+ * scan dwell to 50ms (DFS passive keeps its default via the driver patch),
+ * and trigger the survey. */
+static void mtk_init_partial_scan(const char *ifname, int op_band)
 {
+	mtk_drv_set(ifname, "PartialScan=1");
 	mtk_drv_set(ifname, "PartialScanNum=2");
 	mtk_drv_set(ifname, "PartialScanTimerInterval=250");
-	mtk_drv_set(ifname, "PartialScan=1");
+	mtk_drv_set(ifname, op_band == IWINFO_BAND_24 ? "ScanDwellTime=2:50" : "ScanDwellTime=5:50");
 	mtk_drv_set(ifname, "SiteSurvey=");
 }
 
-/* Disarm PartialScan so later scans behave normally. */
+/* Disarm PartialScan and clear the custom dwell. */
 static void mtk_cleanup_partial_scan(const char *ifname)
 {
 	mtk_drv_set(ifname, "PartialScan=0");
+	mtk_drv_set(ifname, "ScanDwellTime=0:0");
 }
 
 static int mtk_get_scanlist(const char *dev, char *buf, int *len)
@@ -548,7 +552,7 @@ static int mtk_get_scanlist(const char *dev, char *buf, int *len)
 	*len = 0;
 	op_band = mtk_get_op_band(ifname);
 
-	mtk_init_partial_scan(ifname);
+	mtk_init_partial_scan(ifname, op_band);
 
 	sleep(3);
 
