@@ -500,43 +500,65 @@ static int mtk_get_op_band(const char *ifname)
 	return 0;
 }
 
+/* Set a driver proc "<name>=<value>" via RTPRIV_IOCTL_SET (iwpriv's path, no shell). */
+static void mtk_drv_set(const char *ifname, const char *arg)
+{
+	struct iwreq wrq = {};
+
+	wrq.u.data.pointer = (caddr_t)arg;
+	wrq.u.data.length = strlen(arg) + 1;	/* include NUL, matching iwpriv */
+
+	mtk_ioctl(ifname, RTPRIV_IOCTL_SET, &wrq);
+}
+
+/* Configure PartialScan (2 channels/round, 250ms home gap) and trigger the survey. */
+static void mtk_init_partial_scan(const char *ifname)
+{
+	mtk_drv_set(ifname, "PartialScanNum=2");
+	mtk_drv_set(ifname, "PartialScanTimerInterval=250");
+	mtk_drv_set(ifname, "PartialScan=1");
+	mtk_drv_set(ifname, "SiteSurvey=");
+}
+
+/* Disarm PartialScan so later scans behave normally. */
+static void mtk_cleanup_partial_scan(const char *ifname)
+{
+	mtk_drv_set(ifname, "PartialScan=0");
+}
+
 static int mtk_get_scanlist(const char *dev, char *buf, int *len)
 {
-	struct iwinfo_scanlist_entry *e = (struct iwinfo_scanlist_entry *)buf;
-	char *data = NULL;
-	unsigned int data_len = 5000;
-	int offsets[SCAN_DATA_MAX];
-	char cmd[128];
+	char *pos;
 	int index = 0;
 	int total = -1;
 	int op_band = 0;
-	char *pos;
+	char *data = NULL;
 	const char *ifname;
+	int offsets[SCAN_DATA_MAX];
+	unsigned int data_len = 5000;
+	struct iwinfo_scanlist_entry *e = (struct iwinfo_scanlist_entry *)buf;
 
 	ifname = mtk_dev2phy(dev);
 	if (!ifname)
 		return -1;
 
-	op_band = mtk_get_op_band(ifname);
-
-	*len = 0;
-
 	if ((data = (char *)malloc(data_len)) == NULL)
 		return -1;
 
-	sprintf(cmd, "iwpriv %s set SiteSurvey=", ifname);
-	system(cmd);
+	*len = 0;
+	op_band = mtk_get_op_band(ifname);
 
-	sleep(5);
+	mtk_init_partial_scan(ifname);
+
+	sleep(3);
 
 	while (1) {
 		memset(data, 0, data_len);
-		if (mtk_get_scanlist_dump(ifname, index, data, sizeof(data))) {
+		if (mtk_get_scanlist_dump(ifname, index, data, data_len)) {
+			mtk_cleanup_partial_scan(ifname);
 			free(data);
 			return -1;
 		}
-
-		//printf("%s\n", data);
 
 		sscanf(data, "\nTotal=%d", &total);
 
@@ -574,6 +596,9 @@ static int mtk_get_scanlist(const char *dev, char *buf, int *len)
 			security = pos + offsets[SCAN_DATA_SECURITY];
 			if (!strstr(security, "PSK") && !strstr(security, "OPEN") && !strstr(security, "OWE"))
 				continue;
+
+			if (*len + (int)sizeof(struct iwinfo_scanlist_entry) > IWINFO_BUFSIZE)
+				break;
 
 			memset(crypto, 0, sizeof(struct iwinfo_crypto_entry));
 
@@ -661,7 +686,12 @@ static int mtk_get_scanlist(const char *dev, char *buf, int *len)
 				mac + 0, mac + 1, mac + 2, mac + 3, mac + 4, mac + 5);
 
 			sscanf(pos + offsets[SCAN_DATA_SSID_LEN], "%d", &ssid_len);
+			if (ssid_len < 0)
+				ssid_len = 0;
+			if (ssid_len > IWINFO_ESSID_MAX_SIZE)
+				ssid_len = IWINFO_ESSID_MAX_SIZE;
 			memcpy(e->ssid, pos + offsets[SCAN_DATA_SSID], ssid_len);
+			e->ssid[ssid_len] = '\0';
 
 			*len += sizeof(struct iwinfo_scanlist_entry);
 			e++;
@@ -670,12 +700,16 @@ static int mtk_get_scanlist(const char *dev, char *buf, int *len)
 				break;
 		}
 
+		if (*len + (int)sizeof(struct iwinfo_scanlist_entry) > IWINFO_BUFSIZE)
+			break;
+
 		if (index + 1 == total)
 			break;
 		else
 			index++;
 	}
 
+	mtk_cleanup_partial_scan(ifname);
 	free(data);
 	return 0;
 }
