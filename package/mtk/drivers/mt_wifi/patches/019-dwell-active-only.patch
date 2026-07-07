@@ -9,3 +9,12 @@
  		stay_time = (ScanCtrl->Channel > 14) ? (ScanCtrl->Usr_dwell.dwell_t_5g) : (ScanCtrl->Usr_dwell.dwell_t_2g);
  		if (stay_time)
  			goto set_stay_time;
+@@ -846,7 +846,7 @@
+ 					stay_time = MIN_CHANNEL_TIME;
+ 
+ 				} else {
+-						stay_time = MAX_CHANNEL_TIME;
++						stay_time = bScanPassive ? MIN_CHANNEL_TIME : MAX_CHANNEL_TIME;
+ 				}
+ 	}
+ 
