@@ -469,9 +469,8 @@ return view.extend({
 					offset_tbl: {},
 					col_width: 0,
 					tab: tab,
-					channels: bands[band].channels,
-					band: band,
 					created: false,
+					channels: bands[band].channels,
 				};
 
 				this.radios[ifname+band] = {
@@ -493,12 +492,15 @@ return view.extend({
 				tab.addEventListener('cbi-tab-active', L.bind(function(ev) {
 					this.active_tab = ev.detail.tab;
 					var radio = this.radios[this.active_tab];
-					if (radio && !radio.graph.created) {
+
+					if (!radio.graph.created) {
 						radio.graph.created = true;
-						this.create_channel_graph(radio.graph, radio.graph.channels, radio.graph.band);
+						this.create_channel_graph(radio.graph, radio.graph.channels, radio.band);
 					}
-					if (radio && !radio.loadedOnce)
+
+					if (!radio.loadedOnce) {
 						poll.start();
+					}
 				}, this));
 			}
 		}
