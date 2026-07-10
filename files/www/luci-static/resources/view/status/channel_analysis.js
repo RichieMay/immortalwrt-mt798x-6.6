@@ -468,7 +468,6 @@ return view.extend({
 					graph: csvg,
 					offset_tbl: {},
 					col_width: 0,
-					tab: tab,
 					created: false,
 					channels: bands[band].channels,
 				};
@@ -491,7 +490,7 @@ return view.extend({
 				 * rendering all tabs upfront squishes inactive ones. */
 				tab.addEventListener('cbi-tab-active', L.bind(function(ev) {
 					this.active_tab = ev.detail.tab;
-					var radio = this.radios[this.active_tab];
+					const radio = this.radios[this.active_tab];
 
 					if (!radio.graph.created) {
 						radio.graph.created = true;
